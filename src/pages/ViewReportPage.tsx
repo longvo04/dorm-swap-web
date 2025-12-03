@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { formatPrice, formatRelativeTime } from '@/utils/formatters';
 import { ROUTES, CATEGORIES } from '@/utils/constants';
-import { cn } from '@/utils/cn';
 import type { ItemCondition } from '@/types';
 
 interface ReportData {

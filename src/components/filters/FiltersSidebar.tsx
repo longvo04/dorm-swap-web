@@ -34,7 +34,7 @@ export function FiltersSidebar({ filters, onFiltersChange, className }: FiltersS
     onFiltersChange({ ...filters, [field]: numValue });
   };
 
-  const FilterContent = () => (
+  const filterContent = (
     <div className="space-y-6">
       {/* Categories */}
       <div>
@@ -105,8 +105,12 @@ export function FiltersSidebar({ filters, onFiltersChange, className }: FiltersS
           {LISTING_TYPES.map(type => (
             <label
               key={type.value}
-              className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 hover:text-gray-900 ml-4"
+              className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 hover:text-gray-900"
             >
+              <span className={cn(
+                "w-2 h-2 rounded-full",
+                filters.listingType === type.value ? "bg-blue-500" : "bg-gray-300"
+              )} />
               <input
                 type="radio"
                 name="listingType"
@@ -170,7 +174,7 @@ export function FiltersSidebar({ filters, onFiltersChange, className }: FiltersS
               </button>
             </div>
             <div className="p-4">
-              <FilterContent />
+              {filterContent}
             </div>
           </div>
         </>
@@ -178,7 +182,7 @@ export function FiltersSidebar({ filters, onFiltersChange, className }: FiltersS
 
       {/* Desktop Sidebar */}
       <Card className={cn('hidden lg:block p-5', className)}>
-        <FilterContent />
+        {filterContent}
       </Card>
     </>
   );

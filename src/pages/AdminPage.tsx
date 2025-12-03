@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Eye, Check, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useItems } from '@/hooks/useItems';
 import { formatPrice, formatRelativeTime } from '@/utils/formatters';
 import { ROUTES, CATEGORIES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
@@ -141,29 +140,14 @@ const MOCK_REPORTS: Report[] = [
 export function AdminPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { items, updateItem } = useItems();
   
-  // Get initial tab from URL query parameter
-  const getInitialTab = (): AdminTab => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam === 'reports') return 'reports';
-    return 'posts';
-  };
+  // Get active tab from URL query parameter
+  const tabParam = searchParams.get('tab');
+  const activeTab: AdminTab = tabParam === 'reports' ? 'reports' : 'posts';
   
-  const [activeTab, setActiveTab] = useState<AdminTab>(getInitialTab);
   const [selectedPosts, setSelectedPosts] = useState<Set<string>>(new Set());
   const [pendingPosts, setPendingPosts] = useState<PendingPost[]>(MOCK_PENDING_POSTS);
   const [reports, setReports] = useState<Report[]>(MOCK_REPORTS);
-
-  // Update tab when URL changes
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam === 'reports') {
-      setActiveTab('reports');
-    } else {
-      setActiveTab('posts');
-    }
-  }, [searchParams]);
 
   const handleSelectPost = (postId: string) => {
     setSelectedPosts(prev => {
@@ -252,10 +236,7 @@ export function AdminPage() {
         {/* Tabs */}
         <div className="flex bg-gray-100 rounded-full p-1 mb-6">
           <button
-            onClick={() => {
-              setActiveTab('posts');
-              navigate(ROUTES.ADMIN);
-            }}
+            onClick={() => navigate(ROUTES.ADMIN)}
             className={cn(
               "flex-1 py-2.5 px-4 rounded-full text-sm font-medium transition-colors",
               activeTab === 'posts'
@@ -266,10 +247,7 @@ export function AdminPage() {
             Manage Posts
           </button>
           <button
-            onClick={() => {
-              setActiveTab('reports');
-              navigate(ROUTES.ADMIN + '?tab=reports');
-            }}
+            onClick={() => navigate(ROUTES.ADMIN + '?tab=reports')}
             className={cn(
               "flex-1 py-2.5 px-4 rounded-full text-sm font-medium transition-colors",
               activeTab === 'reports'
