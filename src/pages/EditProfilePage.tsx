@@ -6,31 +6,77 @@ import { Card } from '@/components/ui/Card';
 import { DORM_BUILDINGS, ROUTES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
 import type { User } from '@/types';
+import { updateUserProfile } from '@/api';
 
 interface EditProfilePageProps {
   user: User;
-  onUpdateUser: (updates: Partial<User>) => void;
+  onUpdateUser?: (updates: Partial<User>) => void;
 }
 
 export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    name: user.name,
-    dormBuilding: user.dormBuilding || 'A3',
-    roomNumber: user.roomNumber || '501',
+    full_name: user.full_name ?? '',
+    dorm_building: user.dorm_building ?? 'A3',
+    dorm_room: user.dorm_room ?? '501',
   });
   const [isDormDropdownOpen, setIsDormDropdownOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    onUpdateUser({
-      name: formData.name,
-      dormBuilding: formData.dormBuilding,
-      roomNumber: formData.roomNumber,
-    });
-    
-    navigate(ROUTES.PROFILE);
+    setError(null);
+    setIsSubmitting(true);
+
+    try {
+      const userId = user.user_id;
+      if (!userId) {
+        setError('Missing user id');
+        setIsSubmitting(false);
+        return;
+      }
+
+      await updateUserProfile({
+        user_id: userId,
+        full_name: formData.full_name,
+        dorm_building: formData.dorm_building,
+        dorm_room: formData.dorm_room,
+      });
+
+      // Update local session storage so other views refresh
+      const stored = localStorage.getItem('dormswap_auth');
+      if (stored) {
+        try {
+          const session = JSON.parse(stored);
+          session.user = {
+            ...session.user,
+            full_name: formData.full_name,
+            dorm_building: formData.dorm_building,
+            dorm_room: formData.dorm_room,
+          };
+          localStorage.setItem('dormswap_auth', JSON.stringify(session));
+          window.dispatchEvent(new Event('auth-updated'));
+        } catch {
+          // ignore storage errors
+        }
+      }
+
+      if (onUpdateUser) {
+        onUpdateUser({
+          full_name: formData.full_name,
+          dorm_building: formData.dorm_building,
+          dorm_room: formData.dorm_room,
+        });
+      }
+
+      navigate(ROUTES.PROFILE);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update profile';
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -51,13 +97,19 @@ export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
       <div className="max-w-xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card className="border border-gray-200">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {error}
+              </div>
+            )}
+
             {/* Name */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
               <input
                 type="text"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                value={formData.full_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
                 className="w-full px-4 py-3 bg-gray-100 border-0 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
               />
             </div>
@@ -71,7 +123,7 @@ export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
                   onClick={() => setIsDormDropdownOpen(!isDormDropdownOpen)}
                   className="w-full px-4 py-3 bg-gray-100 border-0 rounded-lg flex items-center justify-between focus:ring-2 focus:ring-green-500 outline-none text-left"
                 >
-                  <span>{formData.dormBuilding}</span>
+                  <span>{formData.dorm_building}</span>
                   <ChevronDown className={cn(
                     "h-5 w-5 text-gray-400 transition-transform",
                     isDormDropdownOpen && "rotate-180"
@@ -85,12 +137,12 @@ export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
                         key={dorm}
                         type="button"
                         onClick={() => {
-                          setFormData(prev => ({ ...prev, dormBuilding: dorm }));
+                          setFormData(prev => ({ ...prev, dorm_building: dorm }));
                           setIsDormDropdownOpen(false);
                         }}
                         className={cn(
                           "w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors",
-                          formData.dormBuilding === dorm && "bg-gray-50"
+                          formData.dorm_building === dorm && "bg-gray-50"
                         )}
                       >
                         {dorm}
@@ -106,8 +158,8 @@ export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
               <label className="block text-sm font-medium text-gray-700 mb-2">Room</label>
               <input
                 type="text"
-                value={formData.roomNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, roomNumber: e.target.value }))}
+                value={formData.dorm_room}
+                onChange={(e) => setFormData(prev => ({ ...prev, dorm_room: e.target.value }))}
                 className="w-full px-4 py-3 bg-gray-100 border-0 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
               />
             </div>
@@ -115,9 +167,10 @@ export function EditProfilePage({ user, onUpdateUser }: EditProfilePageProps) {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-3"
+              disabled={isSubmitting}
+              className="w-full bg-green-500 hover:bg-green-600 disabled:opacity-60 text-white py-3"
             >
-              Update
+              {isSubmitting ? 'Updating...' : 'Update'}
             </Button>
           </form>
         </Card>

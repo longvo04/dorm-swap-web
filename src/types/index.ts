@@ -1,14 +1,15 @@
 // User Types
+
 export interface User {
-  id: string;
+  user_id: string;
   email: string;
-  name: string;
-  avatar?: string;
-  phone?: string;
-  dormBuilding?: string;
+  full_name: string;
+  avatar_url?: string;
+  dorm_building?: string;
+  dorm_room?: string;
   roomNumber?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  is_admin: boolean;
+  is_verified_student: boolean;
 }
 
 export interface UserSession {

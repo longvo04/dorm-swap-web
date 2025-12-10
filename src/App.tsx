@@ -19,7 +19,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { ROUTES } from '@/utils/constants';
 
 function AppContent() {
-  const { user, isAuthenticated, isLoading, login, logout, updateUser } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, updateUser } = useAuth();
   const location = useLocation();
   
   // Hide header/footer on certain pages
@@ -44,7 +44,7 @@ function AppContent() {
   if (hideLayout && (!isAuthenticated || isItemDetailsPage || isMyItemPage || isProfilePage || isChatPage || isNotificationsPage || isAdminPage)) {
     return (
       <Routes>
-        <Route path={ROUTES.LOGIN} element={<LoginPage onLogin={login} />} />
+        <Route path={ROUTES.LOGIN} element={<LoginPage />} />
         <Route path={ROUTES.ITEM_DETAILS} element={<ItemDetailsPage />} />
         <Route path={ROUTES.PAYMENT} element={<PaymentPage />} />
         <Route 

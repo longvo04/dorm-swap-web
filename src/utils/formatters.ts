@@ -58,9 +58,12 @@ export function slugify(text: string): string {
 /**
  * Get initials from name
  */
-export function getInitials(name: string): string {
+export function getInitials(name?: string): string {
+  if (!name) return '';
   return name
-    .split(' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
     .map(part => part[0])
     .join('')
     .toUpperCase()

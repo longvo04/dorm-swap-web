@@ -3,7 +3,7 @@ import { getInitials } from '@/utils/formatters';
 
 export interface AvatarProps {
   src?: string;
-  name: string;
+  name?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
@@ -15,8 +15,7 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
     lg: 'h-12 w-12 text-base',
     xl: 'h-16 w-16 text-lg',
   };
-
-  const initials = getInitials(name);
+  const initials = getInitials(name || 'User');
 
   if (src) {
     return (

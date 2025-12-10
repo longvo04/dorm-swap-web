@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Shield, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -5,13 +6,43 @@ import { Card } from '@/components/ui/Card';
 import { useItems } from '@/hooks/useItems';
 import { formatPrice } from '@/utils/formatters';
 import { ROUTES } from '@/utils/constants';
+import type { Item } from '@/types';
 
 export function PaymentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getItemById } = useItems();
+  const [item, setItem] = useState<Item | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const item = id ? getItemById(id) : undefined;
+  useEffect(() => {
+    if (!id) return;
+    
+    let isMounted = true;
+    
+    const fetchItem = async () => {
+      setIsLoading(true);
+      const fetchedItem = await getItemById(id);
+      if (isMounted) {
+        setItem(fetchedItem);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchItem();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [id, getItemById]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+      </div>
+    );
+  }
 
   if (!item) {
     return (

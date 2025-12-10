@@ -1,77 +1,55 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { User, UserSession } from '@/types';
+// Note: login is now handled directly in the LoginPage to call the auth API.
 
 const AUTH_STORAGE_KEY = 'dormswap_auth';
+
+function readSession(): User | null {
+  const stored = localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!stored) return null;
+
+  try {
+    const session: UserSession = JSON.parse(stored);
+    if (new Date(session.expiresAt) > new Date()) {
+      return session.user;
+    }
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  } catch {
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  }
+}
 
 interface UseAuthReturn {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (googleToken: string) => Promise<void>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => void;
 }
 
 export function useAuth(): UseAuthReturn {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => readSession());
+  const isLoading = false;
 
   // Load user from storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (stored) {
-      try {
-        const session: UserSession = JSON.parse(stored);
-        // Check if token is expired
-        if (new Date(session.expiresAt) > new Date()) {
-          setUser(session.user);
-        } else {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
-        }
-      } catch {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === AUTH_STORAGE_KEY) {
+        setUser(readSession());
       }
-    }
-    setIsLoading(false);
-  }, []);
+    };
 
-  const login = useCallback(async (googleToken: string) => {
-    setIsLoading(true);
-    try {
-      // TODO: Replace with actual API call
-      // const response = await fetch('/api/auth/google', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ token: googleToken }),
-      // });
-      // const data = await response.json();
-      
-      // Mock user for development
-      const mockSession: UserSession = {
-        accessToken: 'mock_access_token',
-        refreshToken: 'mock_refresh_token',
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-        user: {
-          id: '1',
-          email: 'sarah.johnson@university.edu.vn',
-          name: 'Sarah Johnson',
-          avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah',
-          dormBuilding: 'A3',
-          roomNumber: '501',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      };
+    const handleAuthUpdated = () => setUser(readSession());
 
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(mockSession));
-      setUser(mockSession.user);
-      console.log('Login with Google token:', googleToken);
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('auth-updated', handleAuthUpdated);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('auth-updated', handleAuthUpdated);
+    };
   }, []);
 
   const logout = useCallback(() => {
@@ -98,7 +76,6 @@ export function useAuth(): UseAuthReturn {
     user,
     isAuthenticated: !!user,
     isLoading,
-    login,
     logout,
     updateUser,
   };

@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Eye, Edit2, Trash2, CreditCard, DollarSign, MessageSquare, CheckCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
-import { useItems } from '@/hooks/useItems';
 import { formatPrice } from '@/utils/formatters';
 import { ROUTES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
 import type { User, ItemCondition } from '@/types';
+import { deleteUserItem, getUserListings, getUserProfile } from '@/api';
 
 // Transaction types and mock data
 type TransactionStatus = 'awaiting_meetup' | 'renting' | 'dispute' | 'completed' | 'awaiting_admin' | 'cancelled';
@@ -117,6 +117,38 @@ const conditionStyles: Record<ItemCondition, string> = {
   'Acceptable': 'border-red-500 text-red-600 bg-red-50',
 };
 
+interface ProfileListing {
+  id: string;
+  title: string;
+  price: number;
+  condition?: ItemCondition;
+  status?: string;
+  images?: string[];
+  listingType?: string;
+}
+
+interface ProfileResponse {
+  full_name?: string;
+  email?: string;
+  avatar_url?: string;
+  dorm_building?: string;
+  dorm_room?: string;
+}
+
+interface ProfileListingResponse {
+  id?: string;
+  item_id?: string;
+  title?: string;
+  price?: number | string;
+  item_condition?: ItemCondition;
+  status?: string;
+  images?: string[];
+  image_urls?: string[];
+  image?: string;
+  listing_type?: string;
+  type?: string;
+}
+
 export function ProfilePage({ user, onLogout }: ProfilePageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -151,7 +183,83 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
     branchName: 'Hanoi Branch',
   });
   const [editBankingInfo, setEditBankingInfo] = useState<BankingInfo>(bankingInfo);
-  const { items, deleteItem } = useItems();
+  const [profileData, setProfileData] = useState<User>(user);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [listings, setListings] = useState<ProfileListing[]>([]);
+  const [isListingsLoading, setIsListingsLoading] = useState(false);
+  const [listingsError, setListingsError] = useState<string | null>(null);
+
+  // Fetch profile details
+  useEffect(() => {
+    let isMounted = true;
+    const loadProfile = async () => {
+      setIsProfileLoading(true);
+      setProfileError(null);
+      try {
+        const response = await getUserProfile<ProfileResponse>(user.user_id);
+        const data = (response as ProfileResponse) ?? {};
+        if (!isMounted) return;
+        const updated: User = {
+          ...user,
+          full_name: data?.full_name ?? user.full_name,
+          email: data?.email ?? user.email,
+          avatar_url: data?.avatar_url ?? user.avatar_url,
+          dorm_building: data?.dorm_building ?? user.dorm_building,
+          dorm_room: data?.dorm_room ?? user.dorm_room,
+        };
+        setProfileData(updated);
+      } catch (err) {
+        if (!isMounted) return;
+        const message = err instanceof Error ? err.message : 'Failed to load profile';
+        setProfileError(message);
+      } finally {
+        if (isMounted) setIsProfileLoading(false);
+      }
+    };
+
+    loadProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  // Fetch user listings
+  useEffect(() => {
+    let isMounted = true;
+    const loadListings = async () => {
+      setIsListingsLoading(true);
+      setListingsError(null);
+      try {
+        const response = await getUserListings<ProfileListingResponse[] | { items: ProfileListingResponse[] }>(user.user_id);
+        const rawList = Array.isArray(response)
+          ? response
+          : (response as { items?: ProfileListingResponse[] })?.items ?? [];
+        if (!isMounted) return;
+        const normalized: ProfileListing[] = rawList.map((item) => ({
+          id: item.id ?? item.item_id ?? crypto.randomUUID(),
+          title: item.title ?? 'Untitled',
+          price: Number(item.price ?? 0),
+          condition: item.item_condition,
+          status: item.status ?? 'available',
+          images: item.images ?? item.image_urls ?? item.image ? [item.image ?? ''] : [],
+          listingType: item.listing_type ?? item.type,
+        }));
+        setListings(normalized);
+      } catch (err) {
+        if (!isMounted) return;
+        const message = err instanceof Error ? err.message : 'Failed to load listings';
+        setListingsError(message);
+      } finally {
+        if (isMounted) setIsListingsLoading(false);
+      }
+    };
+
+    loadListings();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Handle confirm item received (buyer)
   const handleConfirmReceived = (txn: Transaction) => {
@@ -231,13 +339,18 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
   };
 
   // Get user's items
-  const myItems = items.filter(item => item.sellerId === user.id && item.status !== 'removed');
-  const activeItems = myItems.filter(item => item.status === 'available');
-  const pendingItems = myItems.filter(item => item.status === 'sold' || item.status === 'rented');
-
+  const activeItems = listings.filter(item => (item.status ?? 'available') === 'available');
+  const pendingItems = listings.filter(item => (item.status ?? '') !== 'available');
+console.log(activeItems, pendingItems);
   const handleDelete = async (itemId: string) => {
     if (window.confirm('Are you sure you want to delete this listing?')) {
-      await deleteItem(itemId);
+      try {
+        await deleteUserItem(user.user_id, itemId);
+        setListings(prev => prev.filter(item => item.id !== itemId));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete item';
+        alert(message);
+      }
     }
   };
 
@@ -306,28 +419,33 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
               <div className="space-y-6">
                 {/* Profile Card */}
                 <Card className="border border-gray-200">
+                  {profileError && (
+                    <div className="mb-3 text-sm text-red-500">{profileError}</div>
+                  )}
                   <div className="flex items-start gap-6">
                     {/* Avatar */}
                     <div className="relative">
-            <Avatar name={user.name} src={user.avatar} size="xl" />
-            <button
+                      <Avatar name={profileData.full_name} src={profileData.avatar_url} size="xl" />
+                      <button
                         className="absolute bottom-0 right-0 w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center shadow hover:bg-gray-300 transition-colors"
-            >
+                      >
                         <Camera className="h-4 w-4 text-gray-600" />
-            </button>
-          </div>
+                      </button>
+                    </div>
 
                     {/* Info */}
                     <div className="flex-1">
-                      <h2 className="text-xl font-semibold text-gray-900">{user.name}</h2>
+                      <h2 className="text-xl font-semibold text-gray-900">
+                        {isProfileLoading ? 'Loading...' : profileData.full_name}
+                      </h2>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-gray-500">{user.email}</span>
+                        <span className="text-gray-500">{profileData.email}</span>
                         <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded">
                           Verified
                         </span>
                       </div>
                       <p className="text-gray-600 mt-2">
-                        Dorm: {user.dormBuilding || 'A3'} • Room {user.roomNumber || '501'}
+                        Dorm: {profileData.dorm_building || 'A3'} • Room {profileData.dorm_room || '501'}
                       </p>
                       <Button
                         onClick={() => navigate('/profile/edit')}
@@ -344,12 +462,16 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
                   <h3 className="font-semibold text-gray-900 mb-4">Statistics</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-lg p-6 text-center">
-                      <div className="text-3xl font-light text-blue-500">{activeItems.length}</div>
+                      <div className="text-3xl font-light text-blue-500">
+                        {isListingsLoading ? '...' : activeItems.length}
+                      </div>
                       <div className="text-gray-500 mt-1">Active Listings</div>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-6 text-center">
-                      <div className="text-3xl font-light text-green-500">12</div>
-                      <div className="text-gray-500 mt-1">Items Sold</div>
+                      <div className="text-3xl font-light text-green-500">
+                        {isListingsLoading ? '...' : pendingItems.length}
+                      </div>
+                      <div className="text-gray-500 mt-1">Pending/Other</div>
                     </div>
                   </div>
         </Card>
@@ -425,70 +547,84 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
 
                 {/* Listings */}
                 <div className="space-y-4">
-                  {(listingFilter === 'active' ? activeItems : pendingItems).map(item => (
-                    <div key={item.id} className="flex gap-4 p-4 border border-gray-200 rounded-xl">
-                      <div className="w-28 h-28 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                        <img
-                          src={item.images[0] || '/placeholder.jpg'}
-                          alt={item.title}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="font-semibold text-gray-900">{item.title}</h4>
-                          {listingFilter === 'pending' && (
-                            <span className="px-2 py-0.5 bg-orange-400 text-white text-xs font-medium rounded">
-                              Pending Review
-                            </span>
-                          )}
-                        </div>
-                        <span className={cn(
-                          "inline-block px-2.5 py-0.5 text-xs font-medium rounded border mt-2",
-                          conditionStyles[item.condition]
-                        )}>
-                          {item.condition}
-                        </span>
-                        <p className="text-lg font-light text-green-500 mt-2">
-                          {formatPrice(item.price)}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/my-items/${item.id}`)}
-                          className="flex items-center gap-1.5 rounded-lg"
-                        >
-                          <Eye className="h-4 w-4" />
-                          View
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/items/${item.id}/edit`)}
-                          className="flex items-center gap-1.5 rounded-lg"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                Edit
-              </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(item.id)}
-                          className="flex items-center gap-1.5 text-red-500 border-red-300 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                  {isListingsLoading && (
+                    <div className="text-center py-12 text-gray-500">Loading listings...</div>
+                  )}
 
-                  {(listingFilter === 'active' ? activeItems : pendingItems).length === 0 && (
-                    <div className="text-center py-12 text-gray-500">
-                      No {listingFilter} listings
-                    </div>
+                  {!isListingsLoading && listingsError && (
+                    <div className="text-center py-12 text-red-500">{listingsError}</div>
+                  )}
+
+                  {!isListingsLoading && !listingsError && (
+                    <>
+                      {(listingFilter === 'active' ? activeItems : pendingItems).map(item => (
+                        <div key={item.id} className="flex gap-4 p-4 border border-gray-200 rounded-xl">
+                          <div className="w-28 h-28 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                            <img
+                              src={item.images?.[0] || '/placeholder.jpg'}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-gray-900">{item.title}</h4>
+                              {listingFilter === 'pending' && (
+                                <span className="px-2 py-0.5 bg-orange-400 text-white text-xs font-medium rounded">
+                                  Pending Review
+                                </span>
+                              )}
+                            </div>
+                            {item.condition && (
+                              <span className={cn(
+                                "inline-block px-2.5 py-0.5 text-xs font-medium rounded border mt-2",
+                                conditionStyles[item.condition] ?? 'border-gray-200 text-gray-600 bg-gray-50'
+                              )}>
+                                {item.condition}
+                              </span>
+                            )}
+                            <p className="text-lg font-light text-green-500 mt-2">
+                              {formatPrice(item.price)}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/my-items/${item.id}`)}
+                              className="flex items-center gap-1.5 rounded-lg"
+                            >
+                              <Eye className="h-4 w-4" />
+                              View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate(`/items/${item.id}/edit`)}
+                              className="flex items-center gap-1.5 rounded-lg"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(item.id)}
+                              className="flex items-center gap-1.5 text-red-500 border-red-300 hover:bg-red-50 rounded-lg"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {(listingFilter === 'active' ? activeItems : pendingItems).length === 0 && (
+                        <div className="text-center py-12 text-gray-500">
+                          No {listingFilter} listings
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </Card>
@@ -899,8 +1035,8 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
                       value={editBankingInfo.branchName}
                       onChange={(e) => setEditBankingInfo(prev => ({ ...prev, branchName: e.target.value }))}
                       className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none"
-                    />
-                  </div>
+            />
+          </div>
                 </div>
 
                 <div className="flex gap-3 mt-6">
@@ -1200,35 +1336,35 @@ export function ProfilePage({ user, onLogout }: ProfilePageProps) {
                       onChange={(e) => setDamageDescription(e.target.value)}
                       rows={4}
                       className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none resize-none"
-                    />
-                  </div>
+            />
+          </div>
                 </div>
 
                 <div className="flex gap-3 mt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
+            <Button
+              variant="outline"
+              onClick={() => {
                       setIsReportDamageOpen(false);
                       setSelectedTransaction(null);
                       setDamageReason('');
                       setDamageDescription('');
-                    }}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
+              }}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
                   <Button
                     onClick={confirmReportDamage}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                   >
                     Send Report
-                  </Button>
-                </div>
+            </Button>
+          </div>
               </div>
             </div>
           </div>
         </>
-      )}
+        )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, ChevronLeft, ChevronRight, MessageSquare, Eye, Star } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -8,6 +8,7 @@ import { useItems } from '@/hooks/useItems';
 import { formatPrice, formatRelativeTime } from '@/utils/formatters';
 import { ROUTES, CATEGORIES } from '@/utils/constants';
 import { cn } from '@/utils/cn';
+import type { Item } from '@/types';
 // Mock buyer data - in real app, this would come from the item/transaction
 const MOCK_BUYER = {
   id: '2',
@@ -22,12 +23,41 @@ export function ViewMyItemPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getItemById } = useItems();
+  const [item, setItem] = useState<Item | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
-  const item = id ? getItemById(id) : undefined;
+  useEffect(() => {
+    if (!id) return;
+    
+    let isMounted = true;
+    
+    const fetchItem = async () => {
+      setIsLoading(true);
+      const fetchedItem = await getItemById(id);
+      if (isMounted) {
+        setItem(fetchedItem);
+        setIsLoading(false);
+      }
+    };
+    
+    fetchItem();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [id, getItemById]);
 
   // For demo: items with status 'pending' have no buyer yet
   const hasBuyer = item?.status === 'sold' || item?.status === 'rented';
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+      </div>
+    );
+  }
 
   if (!item) {
     return (

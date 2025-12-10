@@ -3,18 +3,34 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useItems } from '@/hooks/useItems';
 import { CATEGORIES, CONDITIONS, DORM_BUILDINGS, ROUTES } from '@/utils/constants';
 import { validateItemForm } from '@/utils/validators';
 import { cn } from '@/utils/cn';
 import type { Category, ListingType, ItemCondition } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { getUserItem, updatePost } from '@/api';
+
+type UserItemResponse = {
+  title?: string;
+  description?: string;
+  price?: number | string;
+  category?: Category;
+  item_condition?: ItemCondition;
+  listing_type?: ListingType;
+  images?: string[];
+  image_urls?: string[];
+  meetup_preference?: string;
+  rental_details?: {
+    deposit_amount?: number;
+    min_rent_period?: number;
+    max_rent_period?: number;
+  };
+};
 
 export function EditItemPage() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { items, updateItem, isLoading } = useItems();
-  
-  const item = items.find(i => i.id === id);
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     title: '',
@@ -23,13 +39,15 @@ export function EditItemPage() {
     category: '' as Category | '',
     condition: '' as ItemCondition | '',
     listingType: 'sell' as ListingType,
-    images: [] as string[],
+    images: [] as { file?: File; url?: string }[],
     building: '',
     rentUnit: '',
     rentalDeposit: '',
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [isConditionOpen, setIsConditionOpen] = useState(false);
   const [isBuildingOpen, setIsBuildingOpen] = useState(false);
@@ -53,31 +71,65 @@ export function EditItemPage() {
     return value.replace(/\./g, '');
   };
 
-  // Pre-populate form with existing item data
+  // Pre-populate form with existing item data from API
   useEffect(() => {
-    if (item) {
-      // Determine rent unit from rental period days
-      let rentUnit = '';
-      if (item.rentalPeriodDays) {
-        if (item.rentalPeriodDays <= 1) rentUnit = 'day';
-        else if (item.rentalPeriodDays <= 7) rentUnit = 'week';
-        else rentUnit = 'month';
+    let isMounted = true;
+    const loadItem = async () => {
+      if (!id || !user?.user_id) {
+        if (isMounted) {
+          setLoadError('Missing item or user information.');
+          setIsLoading(false);
+        }
+        return;
       }
+      setIsLoading(true);
+      setLoadError(null);
+      try {
+        const response = await getUserItem<UserItemResponse>(user.user_id, id);
+        const data: UserItemResponse = response ?? {};
 
-      setFormData({
-        title: item.title,
-        description: item.description,
-        price: formatNumberWithDots(item.price.toString()),
-        category: item.category,
-        condition: item.condition,
-        listingType: item.listingType,
-        images: item.images,
-        building: '', // Building info not stored in item
-        rentUnit,
-        rentalDeposit: item.rentalDeposit ? formatNumberWithDots(item.rentalDeposit.toString()) : '',
-      });
-    }
-  }, [item]);
+        const rentUnit = (() => {
+          const rentalDays = data?.rental_details?.min_rent_period ?? data?.rental_details?.max_rent_period;
+          if (!rentalDays) return '';
+          if (rentalDays <= 1) return 'day';
+          if (rentalDays <= 7) return 'week';
+          return 'month';
+        })();
+
+        const price = formatNumberWithDots(String(data?.price ?? ''));
+        const deposit = data?.rental_details?.deposit_amount
+          ? formatNumberWithDots(String(data.rental_details.deposit_amount))
+          : '';
+
+        if (!isMounted) return;
+
+        setFormData({
+          title: data?.title ?? '',
+          description: data?.description ?? '',
+          price,
+          category: data?.category ?? '' as Category | '',
+          condition: data?.item_condition ?? '' as ItemCondition | '',
+          listingType: data?.listing_type ?? 'sell',
+          images: (data?.images ?? data?.image_urls ?? []).slice(0, 5).map((url: string) => ({ url })),
+          building: data?.meetup_preference ?? '',
+          rentUnit,
+          rentalDeposit: deposit,
+        });
+      } catch (err) {
+        console.error('Failed to load item', err);
+        if (isMounted) {
+          setLoadError('Failed to load item. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadItem();
+    return () => { isMounted = false; };
+  }, [id, user]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -99,16 +151,12 @@ export function EditItemPage() {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, reader.result as string].slice(0, 5),
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
+    const newFiles = Array.from(files).slice(0, 5 - formData.images.length);
+    if (newFiles.length === 0) return;
+    setFormData(prev => ({
+      ...prev,
+      images: [...prev.images, ...newFiles.map(file => ({ file }))],
+    }));
   };
 
   const removeImage = (index: number) => {
@@ -133,7 +181,7 @@ export function EditItemPage() {
       category: formData.category,
       condition: formData.condition,
       listingType: formData.listingType,
-      images: formData.images,
+      images: formData.images.map(img => img.url || img.file?.name || ''),
       rentalDeposit: depositValue ? parseInt(depositValue, 10) : undefined,
       rentalPeriodDays: formData.rentUnit ? 1 : undefined,
     });
@@ -156,21 +204,41 @@ export function EditItemPage() {
         }
       }
 
-      await updateItem(id, {
-        title: formData.title,
-        description: formData.description,
-        price: parseInt(priceValue, 10),
-        category: formData.category as Category,
-        condition: formData.condition as ItemCondition,
-        listingType: formData.listingType,
-        images: formData.images.length > 0 ? formData.images : ['https://picsum.photos/seed/item/400/400'],
-        rentalDeposit: depositValue ? parseInt(depositValue, 10) : undefined,
-        rentalPeriodDays,
-      });
+      const categoryIndex = CATEGORIES.findIndex(c => c.id === formData.category);
+      const categoryId = categoryIndex >= 0 ? categoryIndex + 1 : undefined;
+
+      const filesToUpload = formData.images
+        .filter(img => img.file)
+        .map(img => img.file as File);
+
+      await updatePost(
+        id!,
+        {
+          seller_id: user?.user_id ?? 'demo-seller',
+          category_id: categoryId ?? 0,
+          title: formData.title,
+          description: formData.description,
+          price: priceValue ? parseInt(priceValue, 10) : 0,
+          item_condition: formData.condition as ItemCondition,
+          listing_type: formData.listingType,
+          status: 'available',
+          meetup_preference: formData.building,
+          rental_details: formData.listingType === 'rent'
+            ? {
+                rent_unit: formData.rentUnit || undefined,
+                deposit_amount: depositValue ? parseInt(depositValue, 10) : undefined,
+                min_rent_period: rentalPeriodDays,
+                max_rent_period: rentalPeriodDays,
+              }
+            : undefined,
+        },
+        filesToUpload
+      );
       
       navigate(ROUTES.PROFILE + '?tab=listings');
     } catch (error) {
       console.error('Failed to update item:', error);
+      alert('Failed to update item. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -179,11 +247,20 @@ export function EditItemPage() {
   const selectedCategory = CATEGORIES.find(c => c.id === formData.category);
   const selectedCondition = CONDITIONS.find(c => c.value === formData.condition);
 
-  if (!item && !isLoading) {
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-600">Loading item...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Item not found</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Failed to load item</h1>
+          <p className="text-gray-500 mb-4">{loadError}</p>
           <Link to={ROUTES.HOME} className="text-green-600 hover:underline">
             Go back to home
           </Link>
@@ -217,9 +294,11 @@ export function EditItemPage() {
             
             {formData.images.length > 0 ? (
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 mb-4">
-                {formData.images.map((image, index) => (
+                {formData.images.map((image, index) => {
+                  const preview = image.url || (image.file ? URL.createObjectURL(image.file) : '');
+                  return (
                   <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                    <img src={image} alt={`Upload ${index + 1}`} className="w-full h-full object-cover" />
+                    {preview && <img src={preview} alt={`Upload ${index + 1}`} className="w-full h-full object-cover" />}
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
@@ -228,7 +307,7 @@ export function EditItemPage() {
                       <X className="h-4 w-4" />
                     </button>
                   </div>
-                ))}
+                )})}
               </div>
             ) : null}
             

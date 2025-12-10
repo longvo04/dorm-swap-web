@@ -3,15 +3,16 @@ import { useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Upload, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useItems } from '@/hooks/useItems';
 import { CATEGORIES, CONDITIONS, DORM_BUILDINGS, ROUTES } from '@/utils/constants';
 import { validateItemForm } from '@/utils/validators';
 import { cn } from '@/utils/cn';
 import type { Category, ListingType, ItemCondition } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { createPost } from '@/api';
 
 export function PostItemPage() {
   const navigate = useNavigate();
-  const { createItem, isLoading } = useItems();
+  const { user } = useAuth();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -20,7 +21,7 @@ export function PostItemPage() {
     category: '' as Category | '',
     condition: '' as ItemCondition | '',
     listingType: 'sell' as ListingType,
-    images: [] as string[],
+    images: [] as File[],
     building: '',
     rentUnit: '',
     rentalDeposit: '',
@@ -31,6 +32,7 @@ export function PostItemPage() {
   const [isConditionOpen, setIsConditionOpen] = useState(false);
   const [isBuildingOpen, setIsBuildingOpen] = useState(false);
   const [isRentUnitOpen, setIsRentUnitOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const RENT_UNITS = [
     { value: 'day', label: 'Day' },
@@ -69,16 +71,12 @@ export function PostItemPage() {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({
-          ...prev,
-          images: [...prev.images, reader.result as string].slice(0, 5),
-        }));
-      };
-      reader.readAsDataURL(file);
-    });
+    const newFiles = Array.from(files).slice(0, 5 - formData.images.length);
+    if (newFiles.length === 0) return;
+    setFormData(prev => ({
+      ...prev,
+      images: [...prev.images, ...newFiles],
+    }));
   };
 
   const removeImage = (index: number) => {
@@ -101,7 +99,7 @@ export function PostItemPage() {
       category: formData.category,
       condition: formData.condition,
       listingType: formData.listingType,
-      images: formData.images,
+      images: formData.images.map(f => f.name),
       rentalDeposit: depositValue ? parseInt(depositValue, 10) : undefined,
       rentalPeriodDays: formData.rentUnit ? 1 : undefined,
     });
@@ -112,6 +110,7 @@ export function PostItemPage() {
     }
 
     try {
+      setIsSubmitting(true);
       // Calculate rental period in days based on unit
       let rentalPeriodDays: number | undefined;
       if (formData.listingType === 'rent' && formData.rentUnit) {
@@ -122,22 +121,38 @@ export function PostItemPage() {
         }
       }
 
-      await createItem({
-        title: formData.title,
-        description: formData.description,
-        price: parseInt(priceValue, 10),
-        category: formData.category as Category,
-        condition: formData.condition as ItemCondition,
-        listingType: formData.listingType,
-        images: formData.images.length > 0 ? formData.images : ['https://picsum.photos/seed/item/400/400'],
-        sellerId: '1',
-        rentalDeposit: depositValue ? parseInt(depositValue, 10) : undefined,
-        rentalPeriodDays,
-      });
+      const categoryIndex = CATEGORIES.findIndex(c => c.id === formData.category);
+      const categoryId = categoryIndex >= 0 ? categoryIndex + 1 : undefined;
+
+      await createPost(
+        {
+          seller_id: user?.user_id ?? 'demo-seller',
+          category_id: categoryId ?? 0,
+          title: formData.title,
+          description: formData.description,
+          price: parseInt(priceValue, 10),
+          item_condition: formData.condition as ItemCondition,
+          listing_type: formData.listingType,
+          status: 'available',
+          meetup_preference: formData.building ? `Pick up from dormitory building ${formData.building}` : undefined,
+          rental_details: formData.listingType === 'rent'
+            ? {
+                rent_unit: formData.rentUnit || undefined,
+                deposit_amount: depositValue ? parseInt(depositValue, 10) : undefined,
+                min_rent_period: rentalPeriodDays,
+                max_rent_period: rentalPeriodDays,
+              }
+            : undefined,
+        },
+        formData.images
+      );
       
       navigate(ROUTES.PROFILE + '?tab=listings');
     } catch (error) {
       console.error('Failed to create item:', error);
+      alert('Failed to post item. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -169,9 +184,9 @@ export function PostItemPage() {
             
             {formData.images.length > 0 ? (
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-4 mb-4">
-                {formData.images.map((image, index) => (
+                {formData.images.map((file, index) => (
                   <div key={index} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                    <img src={image} alt={`Upload ${index + 1}`} className="w-full h-full object-cover" />
+                    <img src={URL.createObjectURL(file)} alt={`Upload ${index + 1}`} className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
@@ -463,10 +478,10 @@ export function PostItemPage() {
             </Button>
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isSubmitting}
               className="px-8 bg-green-500 hover:bg-green-600 text-white disabled:bg-green-400"
             >
-              {isLoading ? 'Posting...' : 'Post Item'}
+              {isSubmitting ? 'Posting...' : 'Post Item'}
             </Button>
           </div>
         </form>
