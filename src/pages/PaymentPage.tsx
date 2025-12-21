@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Shield, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -11,9 +11,13 @@ import type { Item } from '@/types';
 export function PaymentPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { getItemById } = useItems();
   const [item, setItem] = useState<Item | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Get rental days from URL params, default to 1
+  const rentalDays = parseInt(searchParams.get('days') || '1', 10);
   
   useEffect(() => {
     if (!id) return;
@@ -125,9 +129,16 @@ export function PaymentPage() {
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-900">{item.title}</h4>
-                  <p className="text-xl font-light text-green-500 mt-1">
-                    {formatPrice(item.price)}
-                  </p>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <p className="text-xl font-light text-green-500">
+                      {formatPrice(item.price)}
+                    </p>
+                    {item.listingType === 'rent' && (
+                      <span className="text-gray-500 text-sm">
+                        / {item.rentalPeriodDays === 1 ? 'Day' : item.rentalPeriodDays === 7 ? 'Week' : 'Month'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </Card>
@@ -136,14 +147,37 @@ export function PaymentPage() {
             <Card className="border border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Cost Breakdown</h3>
               <div className="space-y-3">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-orange-500">Item Price</span>
-                  <span className="text-gray-900">{formatPrice(item.price)}</span>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="font-semibold text-gray-900">Total Amount</span>
-                  <span className="text-2xl font-light text-green-500">{formatPrice(item.price)}</span>
-                </div>
+                {item.listingType === 'rent' ? (
+                  <>
+                    {item.rentalDeposit && (
+                      <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                        <span className="text-gray-700">Deposit</span>
+                        <span className="text-orange-500 font-medium">{formatPrice(item.rentalDeposit)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-gray-700">Rent ({rentalDays} {rentalDays === 1 ? 'Day' : 'Days'})</span>
+                      <span className="text-orange-500 font-medium">{formatPrice(item.price * rentalDays)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="font-semibold text-gray-900">Total Amount</span>
+                      <span className="text-2xl font-light text-green-500">
+                        {formatPrice(Number(item.rentalDeposit || 0) + (item.price * rentalDays))}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                      <span className="text-orange-500">Item Price</span>
+                      <span className="text-gray-900">{formatPrice(item.price)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="font-semibold text-gray-900">Total Amount</span>
+                      <span className="text-2xl font-light text-green-500">{formatPrice(item.price)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </Card>
           </div>
@@ -152,22 +186,29 @@ export function PaymentPage() {
           <div className="space-y-6">
             {/* Payment Instructions */}
             <Card className="border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Instructions</h3>
+              <h3 className="text-lg font-semibold text-red-700 mb-4">Payment Instructions</h3>
               <p className="text-gray-600 mb-4">
-                Please transfer <span className="text-green-500 font-semibold text-lg">{formatPrice(item.price)}</span> to the following account:
+                Please transfer{' '}
+                <span className="text-green-500 font-semibold text-lg">
+                  {item.listingType === 'rent' 
+                    ? formatPrice(Number(item.rentalDeposit || 0) + (item.price * rentalDays))
+                    : formatPrice(item.price)
+                  }
+                </span>
+                {' '}to the following account:
               </p>
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-orange-500">Bank Name:</span>
+                  <span className="text-gray-700">Bank Name:</span>
                   <span className="font-medium text-gray-900">DormSwap Bank</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-orange-500">Account Number:</span>
+                  <span className="text-gray-700">Account Number:</span>
                   <span className="font-medium text-gray-900">1234-5678-9012</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-orange-500">Account Name:</span>
-                  <span className="font-medium text-green-600">DormSwap Platform</span>
+                  <span className="text-gray-700">Account Name:</span>
+                  <span className="font-medium text-gray-900">DormSwap Platform</span>
                 </div>
               </div>
             </Card>

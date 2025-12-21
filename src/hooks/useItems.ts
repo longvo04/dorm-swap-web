@@ -16,6 +16,33 @@ function idToCategory(category_id?: number | string): Category {
   return CATEGORIES[idx]?.id ?? 'others';
 }
 
+function mapCategory(raw: ApiItem): Category {
+  const categoryObj = typeof raw.category === 'object' && raw.category !== null ? raw.category : undefined;
+
+  // Prefer slug (aligns with our Category ids)
+  const slug = categoryObj?.slug ?? (typeof raw.category === 'string' ? raw.category : undefined);
+  if (slug) {
+    const matchBySlug = CATEGORIES.find(c => c.id === slug);
+    if (matchBySlug) return matchBySlug.id;
+  }
+
+  // Fallback to name match
+  if (categoryObj?.name) {
+    const matchByName = CATEGORIES.find(
+      c => c.label.toLowerCase() === categoryObj.name?.toLowerCase()
+    );
+    if (matchByName) return matchByName.id;
+  }
+
+  // Fallback to numeric id provided either at root or nested
+  const categoryId = categoryObj?.category_id ?? raw.category_id;
+  if (categoryId !== undefined) {
+    return idToCategory(categoryId);
+  }
+
+  return 'others';
+}
+
 interface ApiItem {
   id?: string;
   item_id?: string;
@@ -23,6 +50,11 @@ interface ApiItem {
   description?: string;
   price?: number | string;
   category_id?: number | string;
+  category?: {
+    category_id?: number | string;
+    name?: string;
+    slug?: string;
+  } | string;
   item_condition?: ItemCondition;
   listing_type?: ListingType;
   status?: ItemStatus;
@@ -71,13 +103,13 @@ function mapApiItem(raw: ApiItem): Item {
     title: raw.title ?? 'Untitled',
     description: raw.description ?? '',
     price: Number(raw.price ?? 0),
-    category: idToCategory(raw.category_id),
+    category: mapCategory(raw),
     condition,
     listingType: (raw.listing_type as ListingType) ?? 'sell',
     status: (raw.status as ItemStatus | undefined) ?? 'available',
     images: raw.images ?? raw.image_urls ?? raw.image ? [raw.image ?? ''] : [],
     sellerId: raw.seller_id ?? 'unknown',
-    rentalDeposit: raw.rental_details?.deposit_amount,
+    rentalDeposit: raw.rental_details?.deposit_amount ? Number(raw.rental_details.deposit_amount) : undefined,
     rentalPeriodDays: raw.rental_details?.min_rent_period,
     createdAt: raw.created_at ? new Date(raw.created_at) : new Date(),
     updatedAt: raw.updated_at ? new Date(raw.updated_at) : new Date(),
@@ -123,6 +155,7 @@ export function useItems(): UseItemsReturn {
           ? response
           : response.items ?? response.data ?? [];
         const mappedItems = data.map(mapApiItem);
+        console.log('mappedItems', mappedItems);
         setItems(mappedItems);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load items';

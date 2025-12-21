@@ -445,7 +445,7 @@ console.log(activeItems, pendingItems);
                         </span>
                       </div>
                       <p className="text-gray-600 mt-2">
-                        Dorm: {profileData.dorm_building || 'A3'} • Room {profileData.dorm_room || '501'}
+                        Dorm: {profileData.dorm_building || 'NULL'} • Room {profileData.dorm_room || 'NULL'}
                       </p>
                       <Button
                         onClick={() => navigate('/profile/edit')}

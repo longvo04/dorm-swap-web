@@ -3,12 +3,12 @@ import type { Category, ItemCondition, ListingType } from '@/types';
 export const APP_NAME = 'DormSwap';
 
 export const CATEGORIES: { id: Category; label: string; icon: string }[] = [
-  { id: 'textbooks', label: 'Textbooks', icon: '📚' },
   { id: 'electronics', label: 'Electronics', icon: '💻' },
-  { id: 'furniture', label: 'Household', icon: '🏠' },
-  { id: 'uniforms-outfits', label: 'Uniforms/Outfits', icon: '👔' },
+  { id: 'books', label: 'Books', icon: '📚' },
+  { id: 'furniture', label: 'Furniture', icon: '🏠' },
+  { id: 'clothing', label: 'Clothing', icon: '👔' },
   { id: 'sports', label: 'Sports', icon: '⚽' },
-  { id: 'others', label: 'Other', icon: '📦' },
+  { id: 'others', label: 'Others', icon: '📦' },
 ];
 
 export const CONDITIONS: { value: ItemCondition; label: string; description: string }[] = [

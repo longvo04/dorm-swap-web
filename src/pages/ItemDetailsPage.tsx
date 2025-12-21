@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, MessageSquare, X, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, MessageSquare, X, ChevronDown, Minus, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useItems } from '@/hooks/useItems';
@@ -29,6 +29,7 @@ export function ItemDetailsPage() {
   const [reportReason, setReportReason] = useState('');
   const [reportDescription, setReportDescription] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [rentalDays, setRentalDays] = useState(1);
   
   useEffect(() => {
     if (!id) return;
@@ -150,36 +151,103 @@ export function ItemDetailsPage() {
               </div>
               
               {/* Price */}
-              <div className="flex items-baseline gap-3">
-                <span className="text-2xl font-light text-green-500">
-                  {formatPrice(item.price)}
-                </span>
-                {item.listingType === 'rent' && (
-                  <span className="text-gray-500 text-sm">/ {item.rentalPeriodDays} days</span>
-                )}
-              </div>
+              {item.listingType === 'sell' ? (
+                <div className="flex items-baseline gap-3">
+                  <span className="text-2xl font-light text-green-500">
+                    {formatPrice(item.price)}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {/* Rental Price */}
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-light text-green-500">
+                      {formatPrice(item.price)}
+                    </span>
+                    <span className="text-gray-500 text-base">
+                      / {item.rentalPeriodDays === 1 ? 'Day' : item.rentalPeriodDays === 7 ? 'Week' : 'Month'}
+                    </span>
+                  </div>
 
-              {item.listingType === 'rent' && item.rentalDeposit && (
-                <p className="text-gray-600 text-sm">
-                  Deposit required: <span className="font-semibold">{formatPrice(item.rentalDeposit)}</span>
-                </p>
+                  {item.rentalDeposit && (
+                    <p className="text-gray-600 text-sm">
+                      Deposit: <span className="font-semibold">{formatPrice(item.rentalDeposit)}</span>
+                    </p>
+                  )}
+
+                  {/* Rent Duration Section */}
+                  <Card className="border border-gray-200 p-4 space-y-4">
+                    <h3 className="font-semibold text-gray-900">Rent Duration</h3>
+                    
+                    {/* Number of Days Selector */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-700 text-sm">Number of Days</span>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setRentalDays(Math.max(1, rentalDays - 1))}
+                          className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+                        >
+                          <Minus className="h-4 w-4 text-gray-600" />
+                        </button>
+                        <span className="w-12 text-center font-medium">{rentalDays}</span>
+                        <button
+                          onClick={() => setRentalDays(rentalDays + 1)}
+                          className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+                        >
+                          <Plus className="h-4 w-4 text-gray-600" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Cost Breakdown */}
+                    <div className="space-y-2 pt-2 border-t border-gray-200">
+                      {item.rentalDeposit && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Deposit</span>
+                          <span className="font-medium">{formatPrice(item.rentalDeposit)}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Rent ({rentalDays} {rentalDays === 1 ? 'Day' : 'Days'})</span>
+                        <span className="font-medium">{formatPrice(item.price * rentalDays)}</span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-200">
+                        <span className="text-gray-700 font-medium">Total Cost</span>
+                        <span className="text-lg font-semibold text-green-500">
+                          {formatPrice(Number(item.rentalDeposit || 0) + (item.price * rentalDays))}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Rent Now Button */}
+                    <Button 
+                      size="lg" 
+                      onClick={() => navigate(`/items/${item.id}/payment?days=${rentalDays}`)}
+                      className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                    >
+                      Rent Now
+                    </Button>
+                  </Card>
+                </>
               )}
 
-              {/* Buy/Rent Now Button */}
-              <Card className="border border-gray-200 p-3">
-                <Button 
-                  size="lg" 
-                  onClick={() => navigate(`/items/${item.id}/payment`)}
-                  className="w-full bg-orange-500 hover:bg-orange-600 text-white"
-                >
-                  {item.listingType === 'sell' ? 'Buy Now' : 'Rent Now'}
-                </Button>
-              </Card>
+              {/* Buy Now Button (for sell items) */}
+              {item.listingType === 'sell' && (
+                <Card className="border border-gray-200 p-3">
+                  <Button 
+                    size="lg" 
+                    onClick={() => navigate(`/items/${item.id}/payment`)}
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    Buy Now
+                  </Button>
+                </Card>
+              )}
 
               {/* Description */}
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Description</h3>
-                <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
+                <p className="text-gray-600 text-sm leading-relaxed">
                   {item.description}
                 </p>
               </div>

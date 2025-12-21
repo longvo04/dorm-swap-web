@@ -265,7 +265,7 @@ export function Header({ user, onLogout, onSearch }: HeaderProps) {
                     }}
                     className="flex items-center gap-2 p-1 hover:bg-gray-100 rounded-lg transition-colors"
                   >
-                    <Avatar name={user.name} src={user.avatar} size="sm" />
+                    <Avatar name={user.full_name} src={user.avatar_url} size="sm" />
                   </button>
 
                   {isProfileMenuOpen && (
@@ -273,7 +273,7 @@ export function Header({ user, onLogout, onSearch }: HeaderProps) {
                       <div className="fixed inset-0 z-10" onClick={closeAllDropdowns} />
                       <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-20">
                         <div className="px-4 py-2 border-b border-gray-100">
-                          <p className="font-medium text-gray-900">{user.name}</p>
+                          <p className="font-medium text-gray-900">{user.full_name}</p>
                           <p className="text-sm text-gray-500 break-all">{user.email}</p>
                         </div>
                         <Link

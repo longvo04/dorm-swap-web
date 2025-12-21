@@ -14,18 +14,64 @@ type UserItemResponse = {
   title?: string;
   description?: string;
   price?: number | string;
-  category?: Category;
+  category?: Category | {
+    category_id?: number | string;
+    name?: string;
+    slug?: string;
+  } | string;
+  category_id?: number | string;
+  // API might return either 'condition' or 'item_condition'
+  condition?: ItemCondition;
   item_condition?: ItemCondition;
+  // API might return either 'type' or 'listing_type'
+  type?: ListingType;
   listing_type?: ListingType;
   images?: string[];
   image_urls?: string[];
+  image?: string; // Single image URL
+  // Building field
   meetup_preference?: string;
+  dorm_building?: string;
+  building?: string | null;
+  // Rental fields - can be at root level or nested
+  rent_unit?: string;
+  deposit_amount?: number | string;
   rental_details?: {
     deposit_amount?: number;
     min_rent_period?: number;
     max_rent_period?: number;
+    rent_unit?: string;
   };
 };
+
+// Helper function to map category from API response to Category type
+function mapCategory(raw: UserItemResponse): Category | '' {
+  const categoryObj = typeof raw.category === 'object' && raw.category !== null ? raw.category : undefined;
+
+  // Prefer slug (aligns with our Category ids)
+  const slug = categoryObj?.slug ?? (typeof raw.category === 'string' ? raw.category : undefined);
+  if (slug) {
+    const matchBySlug = CATEGORIES.find(c => c.id === slug);
+    if (matchBySlug) return matchBySlug.id;
+  }
+
+  // Fallback to name match
+  if (categoryObj?.name) {
+    const matchByName = CATEGORIES.find(
+      c => c.label.toLowerCase() === categoryObj.name?.toLowerCase()
+    );
+    if (matchByName) return matchByName.id;
+  }
+
+  // Fallback to numeric id provided either at root or nested
+  const categoryId = categoryObj?.category_id ?? raw.category_id;
+  if (categoryId !== undefined && categoryId !== null) {
+    const idx = typeof categoryId === 'string' ? Number(categoryId) - 1 : Number(categoryId) - 1;
+    return CATEGORIES[idx]?.id ?? '';
+  }
+
+  return '';
+}
 
 export function EditItemPage() {
   const navigate = useNavigate();
@@ -86,9 +132,19 @@ export function EditItemPage() {
       setLoadError(null);
       try {
         const response = await getUserItem<UserItemResponse>(user.user_id, id);
-        const data: UserItemResponse = response ?? {};
-
-        const rentUnit = (() => {
+        
+        // Handle potential wrapped response structures
+        let data: UserItemResponse;
+        if (response && typeof response === 'object') {
+          // Check if response is wrapped in data, item, or result properties
+          const wrapped = response as Record<string, unknown>;
+          data = (wrapped.data ?? wrapped.item ?? wrapped.result ?? response) as UserItemResponse;
+        } else {
+          data = response ?? {};
+        }
+        
+        // Extract rental fields - check both root level and nested rental_details
+        const rentUnit = data?.rent_unit ?? data?.rental_details?.rent_unit ?? (() => {
           const rentalDays = data?.rental_details?.min_rent_period ?? data?.rental_details?.max_rent_period;
           if (!rentalDays) return '';
           if (rentalDays <= 1) return 'day';
@@ -97,22 +153,37 @@ export function EditItemPage() {
         })();
 
         const price = formatNumberWithDots(String(data?.price ?? ''));
-        const deposit = data?.rental_details?.deposit_amount
-          ? formatNumberWithDots(String(data.rental_details.deposit_amount))
+        const depositAmount = data?.deposit_amount ?? data?.rental_details?.deposit_amount;
+        const deposit = depositAmount
+          ? formatNumberWithDots(String(depositAmount))
           : '';
 
         if (!isMounted) return;
+
+        const mappedCategory = mapCategory(data);
+        
+        // Extract condition (API might return 'condition' or 'item_condition')
+        const extractedCondition = data?.condition ?? data?.item_condition ?? '';
+        
+        // Extract listing type (API might return 'type' or 'listing_type')
+        const extractedListingType = data?.listing_type ?? data?.type ?? 'sell';
+        
+        // Extract building - handle null as empty string
+        const extractedBuilding = data?.building ?? data?.meetup_preference ?? data?.dorm_building ?? '';
+        
+        // Extract images - handle both array format and single image
+        const imageUrls = data?.images ?? data?.image_urls ?? (data?.image ? [data.image] : []);
 
         setFormData({
           title: data?.title ?? '',
           description: data?.description ?? '',
           price,
-          category: data?.category ?? '' as Category | '',
-          condition: data?.item_condition ?? '' as ItemCondition | '',
-          listingType: data?.listing_type ?? 'sell',
-          images: (data?.images ?? data?.image_urls ?? []).slice(0, 5).map((url: string) => ({ url })),
-          building: data?.meetup_preference ?? '',
-          rentUnit,
+          category: mappedCategory,
+          condition: extractedCondition as ItemCondition | '',
+          listingType: extractedListingType as ListingType,
+          images: imageUrls.slice(0, 5).map((url: string) => ({ url })),
+          building: extractedBuilding,
+          rentUnit: rentUnit ?? '',
           rentalDeposit: deposit,
         });
       } catch (err) {
@@ -246,7 +317,7 @@ export function EditItemPage() {
 
   const selectedCategory = CATEGORIES.find(c => c.id === formData.category);
   const selectedCondition = CONDITIONS.find(c => c.value === formData.condition);
-
+  
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">

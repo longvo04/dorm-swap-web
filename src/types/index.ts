@@ -25,13 +25,11 @@ export type ItemCondition = '100% New' | 'Like New' | 'Good' | 'Acceptable';
 export type ItemStatus = 'available' | 'sold' | 'rented' | 'removed';
 
 export type Category = 
-  | 'textbooks'
   | 'electronics'
-  | 'sports'
+  | 'books'
   | 'furniture'
-  | 'appliances'
-  | 'uniforms-outfits'
-  | 'stationery'
+  | 'clothing'
+  | 'sports'
   | 'others';
 
 export interface Item {
